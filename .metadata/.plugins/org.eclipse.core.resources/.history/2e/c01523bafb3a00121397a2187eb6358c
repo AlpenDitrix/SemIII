@@ -1,0 +1,690 @@
+package bTree;
+
+import java.util.Vector;
+
+public class BTree<Key extends Comparable<Key>, Value> {
+
+	@SuppressWarnings("unchecked")
+	// убираем warnings на приведение типа (Value)Object или (Key)Object
+	private static final class Node<Key extends Comparable<Key>, Value> {
+		// TODO взять все пробегания массива key[] и заменить их на что-нибудь
+		// побыстрее.
+		// Тот же бинарный поиск например. Потому что все key[] - упорядоченные
+		// массивы
+		private static int maxThreshold;
+		private static int minThreshold;
+		private Node<Key, Value> parent;
+		private Object[] keys;
+		private Object[] values;
+		private Node<Key, Value>[] links;
+		private int count;
+		private static boolean heightIncreased;
+
+		private Node(int deg) {
+			if (deg < 2) {
+				throw new IllegalArgumentException(
+						"Tree degree must be more than or equal 2");
+			}
+			maxThreshold = 2 * deg - 1;
+			minThreshold = deg - 1;
+			keys = new Object[maxThreshold];
+			values = new Object[maxThreshold];
+			links = null;
+			count = 0;
+			parent = null;
+		}
+
+		private Node(Object[] k, Object[] v, Node<Key, Value>[] l,
+				Node<Key, Value> p) {
+			keys = k;
+			values = v;
+			links = l;
+			parent = p;
+			count = minThreshold;
+		}
+
+		private boolean isLeaf() {
+			return links == null;
+		}
+
+		private Node<Key, Value>[] getLinks() {
+			return links;
+		}
+
+		/**
+		 * Splits filled node on two quasiempty nodes.
+		 */
+		@SuppressWarnings({ "deprecation", "rawtypes" })
+		private void split() {
+			// System.out.println(BTree.tree);
+			// System.out.println("split\n");
+			// TODO
+			/* 0.Prepare */
+			int l = keys.length;
+			int h = keys.length / 2;
+
+			/* I.Create new arrays */
+			Object[] key1 = new Object[l];
+			Object[] key2 = new Object[l];
+			Object[] value1 = new Object[l];
+			Object[] value2 = new Object[l];
+			Node[] link1 = isLeaf() ? null : new Node[l + 1];
+			Node[] link2 = isLeaf() ? null : new Node[l + 1];
+
+			/*
+			 * II.Fill them up by splitting current arrays on left and right
+			 * parts from the pivot element (it's always at the middle)
+			 */
+			System.arraycopy(keys, 0, key1, 0, h);
+			System.arraycopy(keys, h + 1, key2, 0, h);
+			System.arraycopy(values, 0, value1, 0, h);
+			System.arraycopy(values, h + 1, value2, 0, h);
+			if (!isLeaf()) {
+				System.arraycopy(links, 0, link1, 0, h + 1);
+				System.arraycopy(links, h + 1, link2, 0, h + 1);
+				// if it is leaf it must remain "link" arrays equal to null
+			}
+
+			/*
+			 * III.Select parent Node. If not root - parent will remain. On
+			 * another way new siblings will have root as parent and root will
+			 * be replaced by new node with only one element, which is current
+			 * pivot
+			 */
+			Node parentt = parent == null ? this : parent;
+
+			/* IV.Create new siblings */
+			Node nodeLeft = new Node(key1, value1, link1, parentt);
+			Node nodeRight = new Node(key2, value2, link2, parentt);
+
+			/* V.Copy links, if it was not leaf */
+			if (!nodeLeft.isLeaf()) {
+				for (Node node : nodeLeft.links) {
+					if (node != null) {
+						node.parent = nodeLeft;
+					}
+				}
+			}
+			if (!nodeRight.isLeaf()) {
+
+				for (Node node : nodeRight.links) {
+					if (node != null) {
+						node.parent = nodeRight;
+					}
+				}
+			}
+
+			/* VI.addToTop and make new links */
+			if (parent == null) {
+				/*
+				 * creating new arrays is excessive because we have "count" and
+				 * we don't care what's happening "out of him", but helps on
+				 * debug
+				 * 
+				 * Performance test gives strange information: average time
+				 * remained the same, but scatter increased
+				 */
+				// Object kk = key[h];
+				// Object vv = value[h];
+				// key = new Object[size];
+				// value = new Object[size];
+				// key[0] = kk;
+				// value[0] = vv;
+				/**/
+
+				keys[0] = keys[h];
+				values[0] = values[h];
+				count = 1;
+				links = new Node[maxThreshold + 1];
+				links[0] = nodeLeft;
+				links[1] = nodeRight;
+				heightIncreased = true; // height increments when root was
+										// splitted
+			} else {
+				parent.addWithLinking((Key) keys[h], (Value) values[h],
+						nodeLeft, nodeRight);
+			}
+		}
+
+		/**
+		 * Adds pivot element from node to it's parent. Also links will be
+		 * reclaimed and set on new splitted left and right nodes
+		 * 
+		 * @param k
+		 *            key
+		 * @param v
+		 *            value
+		 * @param nodeLeft
+		 *            left node
+		 * @param nodeRight
+		 *            right node
+		 * @deprecate it must not be used anywhere from {@link #split()}
+		 */
+		@Deprecated
+		private void addWithLinking(Key k, Value v, Node<Key, Value> nodeLeft,
+				Node<Key, Value> nodeRight) {
+			// FIXME may be optimized case "k is biggest in this Node => we
+			// needn't
+			// recreate arrays
+			int pos = getPredictedPos(k);
+			addAt(pos, k, v, true);
+			/* II.3 Redo linking */
+			links[pos] = nodeLeft;
+			links[pos + 1] = nodeRight;
+
+			count++;
+			if (count == keys.length) {
+				split();
+			}
+		}
+
+		/**
+		 * Merges two neighbor nodes, which volume dropped to minThreshold<br>
+		 * "This" is right. {@code node} is left
+		 * 
+		 * @param i
+		 */
+		private void merge(Node<Key, Value> node, int i) {
+
+		}
+
+		/**
+		 * Transfers one element from this node to {@code node} in deletion
+		 * processing <br>
+		 * 
+		 * @param node
+		 * @param i
+		 *            index in parent, which links to left sibling
+		 */
+		private static void flow(BTree.Node<Key,Value> src, int iSrc, Node dest, int iDest) {
+			// "lazy overfill" is switched on, because this node has <count ==
+			// minThreshold < maxThreshold -1>
+			/* add here to have appropriate count */
+			dest.addAt(0, src.parent.keys[iSrc], src.parent.values[iSrc], true);
+			
+			/* pick up from left to parent
+			parent.set(i, (Key) node.keys[node.count - 1],
+					(Value) node.values[node.count - 1]);
+			node.removeLast();
+		}
+
+		private void set(int i, Key k, Value v) {
+			keys[i] = k;
+			values[i] = v;
+		}
+
+		private void removeLast() {
+			remove(count - 1);
+		}
+
+		private void remove(int i) {
+			if (i == -1) {
+				// if specified key was not found in this node
+				return;
+			}
+			if (isLeaf()) {
+				if (i == count - 1) {
+					// we don' t care about trash behind "count" border
+					count--;
+				} else {
+					// just remove it
+					System.arraycopy(keys, i + 1, keys, i, count - i - 1);
+					System.arraycopy(values, i + 1, values, i, count - i - 1);
+				}
+			} else {
+				// pop up and remove last
+				keys[i] = links[i].keys[count - 1];
+				values[i] = links[i].values[count - 1];
+				links[i].removeLast();
+			}
+			if (count < minThreshold) {
+				Integer share = whoCanShare();
+				if (share < 0) {
+					// flow
+					if (share == -1) {
+						// from the right
+						// SIC! whoLinksMeFromParent(this)==0;
+						// SIC! whoLinksMeFromParent(sibling)==1;
+						parent.links[1].flow(this, 0);
+					} else {
+						// from the left
+						share += magicNumber * maxThreshold;
+						flow(parent.links[share], share);
+					}
+				} else {
+					// merge
+					if (share == 0) {
+						// with right
+						// SIC! whoLinksMeFromParent(this)==0;
+						// SIC! whoLinksMeFromParent(sibling)==1;
+						parent.links[1].merge(this, 0);
+					} else {
+						// with left
+						merge(parent.links[share], share);
+					}
+				}
+			}
+		}
+
+		/**
+		 * Returns different values in case of different sharing abilities:<br>
+		 * <li>merge with right is available => 0<br> <li>flow with right is
+		 * available => -1<br> <li>merge with left is available => current index
+		 * <br> <li>flow with left is available => current index -
+		 * 2*maxThreshold<br>
+		 * 
+		 * @return
+		 */
+		private int whoCanShare() {
+			int l = whoLinksMeFromParent();
+			if (l == 0) {
+				// check the RIGHT
+				if (parent.links[1].count == minThreshold) {
+					// merge them
+					return 0;
+				} else {
+					return -1;
+				}
+			} else {
+				// LEFT sibling(I mean links[l-1])exists
+				if (parent.links[l - 1].count == minThreshold) {
+					return 0;
+				} else {
+					// I sure: it's above zero and above -1
+					return l - magicNumber * maxThreshold;
+				}
+			}
+		}
+
+		/**
+		 * It's better to have it as field to have no errors when at some time
+		 * scalers would be different
+		 */
+		private static final int magicNumber = 0x45;
+
+		private int whoLinksMeFromParent() {
+			for (int i = 0; i < parent.count + 1; i++) {
+				if (parent.links[i] == this) {
+					return i;
+				}
+			}
+			throw new RuntimeException("Not found link from parent");
+		}
+
+		private void remove(Key k) {
+			remove(getStrictPos(k));
+		}
+
+		/**
+		 * @param k
+		 *            ключ
+		 * @return соответствующий ключу {@code k} элемент или null, если такого
+		 *         не обнаружилось
+		 */
+		private Value get(Key k) {
+			int pos = getStrictPos(k);
+			return pos == -1 ? null : (Value) values[pos];
+		}
+
+		private Integer getLinkPosFrom(Key k, boolean get) {
+			if (!get) {
+				if (isLeaf()) {
+					// no more links forward
+					return null;
+				} else {
+					// yet have more links
+					return getPredictedPos(k);
+				}
+			} else {
+				Integer pos = getPredictedPos(k);
+				if (pos == count || !eq(k, (Key) keys[pos])) {
+					if (isLeaf()) {
+						// not found here. No links forward
+						return null;
+					} else {
+						// not found here. Exists links forward
+						return pos;
+					}
+				} else {
+					// k == keys[pos];
+					// found here
+					return -1;
+				}
+			}
+		}
+
+		/**
+		 * Выдает "жестко" позицию элемента с ключом {@code k}, либо
+		 * {@code (-1)}, если такого нет
+		 * 
+		 * @param k
+		 * @return
+		 */
+		private int getStrictPos(Key k) {
+			for (int i = 0; i < count; i++) {
+				if (eq(k, (Key) keys[i])) {
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		/**
+		 * Возвращает номер ключа куда может быть вставлен {@code k}
+		 * 
+		 * @param k
+		 *            искомый ключ
+		 * @return см. описание
+		 */
+		private int getPredictedPos(Key k) {
+			int i = 0;
+			for (; i < count; i++) {
+				if (AlessOrEqThanB(k, (Key) keys[i])) {
+					return i;
+				}
+			}
+			return i;
+		}
+
+		/**
+		 * @param i
+		 *            индекс
+		 * @return Value из массива value по искомому индексу
+		 */
+		private Value get(int i) {
+			if (i < 0 || i > count) {
+				return null;
+			} else {
+				return (Value) values[i];
+			}
+		}
+
+		/**
+		 * @param i
+		 *            индекс
+		 * @return Node из массива link по искомому индексу
+		 */
+		private Node<Key, Value> getNextFrom(int idx) {
+			if (idx < 0 || idx > count) {
+				return null;
+			} else {
+				return links[idx];
+			}
+		}
+
+		/*
+		 * дальше идет всякая муть (если говорить модные программисты -
+		 * синтаксический сахар) связанная с интерфейсом Comparable
+		 */
+		private boolean AlessThanB(Key A, Key B) {
+			return A.compareTo(B) < 0;
+		}
+
+		private boolean AlessOrEqThanB(Key A, Key B) {
+			return A.compareTo(B) <= 0;
+		}
+
+		private boolean eq(Key A, Key B) {
+			return A.compareTo(B) == 0;
+		}
+
+		private boolean addAt(int pos, Key k, Value v, boolean lazyOverfill) {
+			/* II.1 Push arrays "to right" to create "hole" at <pos> */
+			// try {
+			System.arraycopy(keys, pos, keys, pos + 1, count - pos);
+			System.arraycopy(values, pos, values, pos + 1, count - pos);
+			if (links != null)
+				System.arraycopy(links, pos, links, pos + 1, count - pos + 1);
+			// } catch (ArrayIndexOutOfBoundsException e) {
+			// System.out.println(Arrays.toString(key));
+			// System.out.println(pos);
+			// System.out.println(key.length);
+			// System.out.println(count);
+			// System.exit(1);
+			// }
+			/* II.2 Set new element at <pos> */
+			keys[pos] = k;
+			values[pos] = v;
+			if (!lazyOverfill) {
+				count++;
+				if (count == keys.length) {
+					split();
+				}
+				if (heightIncreased) {
+					heightIncreased = false;
+					return true;
+				} else {
+					return false;
+				}
+			}
+			return false;
+
+		}
+
+		@Override
+		public String toString() {
+			StringBuilder sb = new StringBuilder();
+			sb.append('[');
+			sb.append(count);
+			sb.append("> ");
+			for (int i = 0; i < count; i++) {
+				sb.append('(');
+				sb.append(keys[i]);
+				sb.append(':');
+				sb.append(values[i]);
+				sb.append("), ");
+				// sb.append(key[i]);
+				// sb.append(' ');
+			}
+			sb.delete(sb.length() - 2, sb.length());
+			return sb.append(']').toString();
+		}
+	}
+
+	static BTree<Integer, Integer> tree;
+
+	/**
+	 * Ссылка на корневой узел
+	 */
+	private Node<Key, Value> root;
+
+	/**
+	 * "Популляция" элементов. Меняется при добавлении или удалении элементов
+	 */
+	private long count = 0;
+
+	/**
+	 * Высота дерева
+	 */
+	private int height;
+
+	/**
+	 * Новое Б-дерево определенной степени
+	 * 
+	 * @param deg
+	 *            степень
+	 */
+	public BTree(int deg) {
+		if (deg < 2) {
+			throw new IllegalArgumentException(
+					"Tree degree must be more than or equal 2");
+		}
+		root = new Node<Key, Value>(deg);
+		height = 1;
+	}
+
+	public void delete(Key k) {
+		Node<Key, Value> node = root;
+		Integer pos = node.getLinkPosFrom(k, true);
+		while (pos != null) {
+			if (pos != -1) {
+				node = node.getNextFrom(pos);
+				pos = node.getLinkPosFrom(k, true);
+			} else {
+				node.remove(k);
+			}
+		}
+		count--;
+	}
+
+	public void put(Key k, Value v) {
+		Node<Key, Value> node = predictLeafWhereToPut(k);
+		if (node.addAt(node.getPredictedPos(k), k, v, false)) {
+			height++;
+		}
+		count++;
+	}
+
+	/**
+	 * @param k
+	 *            ключ
+	 * @return первый попавшийся Value с искомым ключом или null, если такого не
+	 *         обнаружилось
+	 */
+	public Value get(Key k) {
+		Node<Key, Value> node = root;
+		Integer pos = node.getLinkPosFrom(k, true);
+		while (pos != null) {
+			if (pos != -1) {
+				node = node.getNextFrom(pos);
+				pos = node.getLinkPosFrom(k, true);
+			} else {
+				return node.get(k);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * @return общее число элементов в дереве (добавленные минус удаленные)
+	 */
+	public long getVolume() {
+		return count;
+	}
+
+	public int getHeight() {
+		return height;
+	}
+
+	/**
+	 * Стирает информацию о дереве.
+	 * <p>
+	 * Фактически: удаляет ссылку на корневой узел. Дальше GC(GarbageCollector -
+	 * "сборщик мусора") замечает, что на root никто не ссылается и освобождает
+	 * занимаемую им память. А потом так же с узлами, на которые ссылался root.
+	 * И так далее до самого "высокого" узла
+	 */
+	public void clear() {
+		root = null;
+	}
+
+	public BTree(int count, int height) {
+		this.count = count;
+	}
+
+	public static void main(String[] a) {
+		Integer[] keys = new Integer[1000000];
+		Integer[] vals = new Integer[1000000];
+		for (int i = 0; i < keys.length; i++) {
+			keys[i] = i;
+			vals[i] = 2 * i;
+		}
+
+		System.err.println("Start");
+		long start = System.currentTimeMillis();
+		tree = new BTree<Integer, Integer>(2);
+		Thread c = (new Thread(new Runnable() {
+			long timer;
+			double iops = -1;
+			long was;
+
+			@Override
+			public void run() {
+				timer = System.currentTimeMillis();
+				while (true) {
+					if (System.currentTimeMillis() - timer > 1000) {
+						timer = System.currentTimeMillis();
+						if (iops == -1) {
+							was = tree.count;
+							iops = tree.count;
+						} else {
+							iops = (iops + tree.count - was) / 2;
+							was = tree.count;
+						}
+						System.out.println(iops);
+					}
+				}
+			}
+		}));
+		for (int i = 0; i < keys.length; i++) {
+			tree.put(keys[i], vals[i]);
+			// System.out.println(tree);
+		}
+
+		System.out.println(tree.count);
+		System.err.println(System.currentTimeMillis() - start + " " + 10000000
+				* 1000 / (System.currentTimeMillis() - start));
+
+		System.err.println("\nNow reading...");
+		for (int i = 0; i < keys.length; i++) {
+			if (tree.get(keys[i]) != vals[i]) {
+				System.err.println(keys[i] + " " + vals[i] + " ::: " + keys[i]
+						+ " " + tree.get(i));
+			}
+		}
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append(height + "\n");
+		Vector<Node<Key, Value>> thisLevelLinks = new Vector<Node<Key, Value>>();
+		thisLevelLinks.add(root);
+		while (thisLevelLinks.size() > 0) {
+			Vector<Node<Key, Value>> th = new Vector<Node<Key, Value>>();
+			sb.append("[[" + thisLevelLinks.size() + ">>  ");
+			for (Node<Key, Value> n : thisLevelLinks) {
+				sb.append(n);
+				sb.append(' ');
+				try {
+					for (Node<Key, Value> nn : n.getLinks()) {
+						if (nn != null) {
+							th.add(nn);
+						}
+					}
+				} catch (NullPointerException e) {
+				}
+			}
+			sb.append('\n');
+			thisLevelLinks = th;
+		}
+
+		return sb.toString();
+	}
+
+	/**
+	 * Составляет массив, содержащий путь к элементу с ключом {@code key} или к
+	 * вершине, где он должен быть, но еще отсутствует.<br
+	 * Структура:<br>
+	 * длина: N (элементы пронумерованы от 0 до N-1)<br>
+	 * path[0]..path[N-2] - индекс ссылки, по которой нужно перейти.<br>
+	 * path[N-1] - если ключ уже есть - то это его индекс в узле. Если его нет -
+	 * это (@code (-1))
+	 * 
+	 * @param key
+	 * @return
+	 */
+	private Node<Key, Value> predictLeafWhereToPut(Key key) {
+		Node<Key, Value> node = root;
+		Integer pos = node.getLinkPosFrom(key, false);
+
+		if (pos != null/* то есть, если root - не лист(см. #node.getLinkFrom()# */) {
+			do {
+				node = node.getNextFrom(pos);
+				pos = node.getLinkPosFrom(key, false);
+			} while (pos != null);
+		}
+
+		return node;
+	}
+}

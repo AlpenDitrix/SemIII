@@ -1,0 +1,36 @@
+import java.util.Random;
+
+public class MatrixField {
+
+	private static final int N = 5;
+	private static byte[][] field = new byte[N][N];
+
+	static void solve() throws Exception {
+
+		for (int i = 0; i < N; i++) {
+			for (int j = 0; j < N; j++) {
+				field[i][j] = nextRandomDigit();
+			}
+		}
+		
+		printField();
+	}
+
+	private static void printField() {
+		for (int i = 0; i < N; i++) {
+			for (int j = 0; j < N; j++) {
+				field[i][j] = nextRandomDigit();
+			}
+		}
+	}
+
+	private static byte nextRandomDigit() {
+		Random r = new Random();
+		return (byte) r.nextInt(2);
+
+	}
+
+	public static void main(String[] args) throws Exception {
+		solve();
+	}
+}

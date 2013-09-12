@@ -1,0 +1,17 @@
+1347104994795	Delete element
+1347105076318	Rename type 'MatrixField'
+1347105154085	Rename method 'nextRandomDigit'
+1347105679425	Rename field 'field'
+1347106293970	Move compilation units
+1347106315407	Rename package 'my'
+1347107078609	Rename method 'printField'
+1347107228871	Rename method 'nextRandomPixel'
+1347107995652	Rename method 'nextRandomPixelCoord'
+1347212174469	Move compilation unit
+1347225562681	Rename type 'MagicWand'
+1347225575963	Rename field 'matrixPic'
+1347225774323	Rename method 'getPredefinedPic'
+1347225779791	Rename method 'getRandomPic'
+1347225788645	Rename method 'getSelectedPixelsList'
+1347225802234	Rename method 'selectAroundPixel'
+1347225977924	Move compilation unit

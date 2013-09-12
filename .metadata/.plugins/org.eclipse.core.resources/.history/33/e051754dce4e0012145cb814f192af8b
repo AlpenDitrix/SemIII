@@ -1,0 +1,371 @@
+package audio;
+
+import java.awt.Canvas;
+import java.awt.Color;
+import java.io.IOException;
+
+public class AudioPainter extends Painter {
+
+	public static int voiceDecision = 0x00;
+	private static final int SPEECH = 0x11;
+	private static final int FAST_MATCH = 0x01;
+	private static final int SLOW_RELEASE = 0x02;
+	private static final int NO_SPEECH = 0x03;
+
+	private static class Detector {
+		
+		private static int decision;
+		private static int prevWeiBeg;
+		private static int curWeiBeg;
+		private static int slowCounter=0;
+		private static int computeDerivation(int bound1, int bound2) {
+			int res = 0;
+			int b1 = bound1 < 0 ? 0 : bound1;
+			int b2 = bound2 > mfcc.length ? mfcc.length : bound2;
+			for (int i = b1 + 1; i < b2; i++) {
+				res += mfcc[i] - mfcc[i - 1];
+			}
+			return res;
+		}
+
+		public static void process() {
+			decision = NO_SPEECH;
+			for (int i = 0; i < mfcc.length; i++) {
+				curWeiBeg += mfcc[i];
+			}
+			curWeiBeg /= mfcc.length;
+
+			isChanging();
+
+			prevWeiBeg = curWeiBeg;
+			voiceDecision=decision;
+		}
+
+		private static void isChanging() {
+			int diff = curWeiBeg - prevWeiBeg;
+			int der = computeDerivation(0, mfcc.length);
+			System.out.println(diff+" "+der);
+			
+			if (der < -5) {
+				// есть пик слева
+				if (diff > 10 ) {//сильный рост л.ч.
+					// вроде появился только что
+					if(voiceDecision==FAST_MATCH){
+						//постепенно-резкий рост о_О
+						decision=SPEECH;
+					} else{
+						decision = FAST_MATCH;
+					}
+					System.out.println("fast");
+				} else {
+					// был
+					decision = SPEECH;
+					System.out.println("speech");
+				}
+			} else // нет пика...
+			if (diff < -10 ) {//сильное падение
+				//а таки был!
+				decision = SLOW_RELEASE;
+				System.out.println("slow");
+				if(voiceDecision==decision){
+					//постепенное-резкое падение о_О
+					slowCounter++;
+				}
+			} else {//так и было ровно!
+				if(voiceDecision==SLOW_RELEASE||voiceDecision==SPEECH){
+					slowCounter++;
+				}
+				if(slowCounter>3){
+					decision = NO_SPEECH;
+				}
+				System.out.println("no speech");
+			}
+		}
+	}
+
+	/* Temporary storages for data */
+	public static byte[] buffer;
+
+	public static double[] fourier;
+	public static double[] mfcc;
+	/* One step computing timer */
+	private static long timer;
+
+	/* Windows size */
+	private static final int h = AudioCanvas.height;
+
+	private static final int w = AudioCanvas.width;
+
+	public final static boolean useWindowFunction = true;
+	/* Oh Jesus, it's damn scalers */
+	private final static int logFourierScaler = 10;
+	private final static int fourierScaler = useWindowFunction ? 30 : 150;
+	private final static int mfccScaler = 5;
+
+	/* GUI colors */
+	private static final Color[] colors = {
+	/* 0 */Color.WHITE // bg
+			/* 1 */, new Color(0, 0, 255, 10) // Buffer
+			/* 2 */, new Color(0, 255, 0, useWindowFunction ? 128 : 32) // Fourier
+			/* 3 */, new Color(0, 255, 0) // MFCC
+			/* 4 */, new Color(100, 100, 100, 80) // grid};
+			/* 5 */, new Color(255, 0, 0, useWindowFunction ? 128 : 32) // log
+																		// Fourier
+	};
+
+	byte[] a;
+
+	private static int[] approxBuf = null;
+
+	private static int[] approxFou = null;
+
+	// static void approx(int[] approx, int x, int y) {
+	// approx = new int[y];
+	// for (int i = 0; i < approx.length; i++) {
+	// approx[i] = (int) ((double) i / (double) y * x);
+	// }
+	// }
+	private static void approxB(int x, int y) {
+		approxBuf = new int[y];
+		for (int i = 0; i < approxBuf.length; i++) {
+			approxBuf[i] = (int) ((double) i / (double) y * x);
+		}
+	}
+
+	private static void approxF(int x, int y) {
+		approxFou = new int[y];
+		for (int i = 0; i < approxFou.length; i++) {
+			approxFou[i] = (int) ((double) i / (double) y * x);
+		}
+	}
+
+	private static void paintFourierGrid() {
+		g.setColor(Color.black);
+		g.drawLine(-1, h / 2, w + 1, h / 2);
+		for (int i = h - 1; i > h / 2; i -= h / 10) {
+			g.setColor(colors[4]);
+			g.drawLine(-1, i, w + 1, i);
+			g.setColor(Color.green.darker());
+			g.drawString(Integer.toString((i - h / 2) * fourierScaler), 5,
+					i - 2);
+		}
+		for (int i = h / 2; i > 0; i -= h / 30) {
+			g.setColor(colors[4]);
+			g.drawLine(-1, i, w + 1, i);
+			g.setColor(Color.red.darker());
+			double hh = ((double) i - (double) h / 2) / logFourierScaler;
+			g.drawString(Double.toString(hh), 5, i - 2);
+		}
+
+		g.setColor(colors[4]);
+
+		// for (int i = 0; i < 20; i++) {
+		// g.drawLine(i * w / 20, -1, i * w / 20, h + 1);
+		// g.drawString("-" + getFourieFreqString(i), i * w / 20 + 1, 15);
+		// }
+		for (int i = 0; i < 40; i++) {
+			int freq = i * 500;
+			int x = freq * w * 2 / Capture.sampleRate; // i*500Hz
+			g.drawLine(x, -1, x, h + 1);
+			g.drawString(Double.toString(((double) freq) / 1000) + "k", x, 15);
+		}
+		int f10 = w * 20000 / Capture.sampleRate;// 10kHz
+		int f1 = w * 2000 / Capture.sampleRate;// 1kHz
+		g.drawLine(f10, -1, f10, h + 1);
+		g.drawLine(f10 + 1, -1, f10 + 1, h + 1);
+		g.drawLine(f1, -1, f1, h + 1);
+		g.drawLine(f1 + 1, -1, f1 + 1, h + 1);
+
+		g.setColor(Color.red.darker());
+		g.drawString("log(FFT) : " + logFourierScaler, 35, h / 2 - 2);
+		g.setColor(Color.green.darker());
+		g.drawString("FFT : " + fourierScaler, 35, h / 2 + 15);
+	}
+
+	public AudioPainter(Canvas c) {
+		super(c);
+	}
+
+	@Override
+	public void paint() {
+
+		Color bg;
+		switch (voiceDecision) {
+		case FAST_MATCH:
+			bg = Color.DARK_GRAY;
+			break;
+		case SLOW_RELEASE:
+			bg = Color.LIGHT_GRAY;
+			break;
+		case SPEECH:
+			bg = Color.BLACK;
+			break;
+		default:
+			bg = Color.WHITE;
+		}
+		g.setColor(bg);
+		g.fillRect(-1, -1, w + 1, h + 1);
+		g.setColor(Color.black);
+		g.drawString(Long.toString(System.currentTimeMillis() - timer), w - 15,
+				10);
+
+		switch (Capture.type) {
+		case Capture.MFCC:
+			paintMfccGrid();
+			break;
+		case Capture.FOURIER:
+			paintFourierGrid();
+			break;
+		case Capture.BUFFER:
+			paintBufferGrid();
+			break;
+		}
+		if (!getAndPaintArray()) {
+			return;
+		}
+		timer = System.currentTimeMillis();
+	}
+
+	private boolean getAndPaintArray() {
+		if (Capture.sync) {
+			synchronized (Capture.locker) {
+				a = Capture.buffer;
+			}
+		} else {
+			a = Capture.buffer;
+		}
+		if (a == null || a.length < 1) {
+			return false;
+		}
+
+		g.setColor(colors[1]);
+		switch (Capture.type) {
+		case Capture.FOURIER:
+			drawFourier(a);
+			break;
+		case Capture.BUFFER:
+			drawBuffer(a);
+			break;
+		case Capture.MFCC:
+			drawMFCC(a);
+		}
+		return true;
+	}
+
+	/**/
+	/**/private void paintBufferGrid() {
+		g.setColor(colors[4]);
+		int offX = 5;
+		int offY = h / 2;
+		int[] lines = { 128, 96, 64, 32, 0, -32, -64, -96, -128, };
+		for (int i : lines) {
+			g.drawLine(-1, offY - i, w + 1, offY - i);
+		}
+		g.setColor(colors[4].brighter());
+		for (int i : lines) {
+			g.drawString(Integer.toString(i), offX, offY - i - 1);
+		}
+	}
+
+	private void paintMfccGrid() {
+		for (int i = h - 1; i > 0; i -= h / 10) {
+			g.setColor(colors[4]);
+			g.drawLine(-1, i, w + 1, i);
+			g.setColor(Color.green.darker());
+			g.drawString(Integer.toString((i - h / 2) / mfccScaler), 5, i - 2);
+		}
+	}
+
+	void drawBuffer(byte[] a) {
+		buffer = a;
+		if (approxBuf == null || approxBuf.length != buffer.length)
+			approxB(w, buffer.length);
+		g.setColor(Color.black);
+		g.fillRect(-1, -1, w + 1, h / 2 - 127);
+		g.fillRect(-1, h / 2 + 128, w + 1, h / 2);
+		int lim = buffer.length - 1;
+		if (buffer.length >= w) {
+			g.setColor(colors[1]);
+			for (int i = 0; i < lim; i++) {
+				g.drawLine(approxBuf[i], buffer[i] + h / 2, approxBuf[i + 1],
+						buffer[i + 1] + h / 2);
+			}
+		} else {
+			for (int i = 0; i < lim; i++) {
+				g.drawLine(approxBuf[i], 10 * buffer[i] + h / 2,
+						approxBuf[i + 1], buffer[i + 1] + h / 2);
+			}
+		}
+	}
+
+	private static void smooth(double[] d) {
+		d[0] = (d[0] + d[1]) / 2;
+		double prev = d[0];
+		for (int i = 1; i < d.length - 1; i++) {
+			double tmp = (prev + d[i] + d[i + 1]) / 3;
+			prev = d[i];
+			d[i] = tmp;
+		}
+		d[d.length - 1] = (prev + d[d.length - 1]) / 2;
+	}
+
+	void drawFourier(byte[] b) {
+		double[] c = Maths.DCT(Maths.byteToDoubleArray(b));
+		// double[] c = Maths.invDCT_log_DCT(b);
+		fourier = new double[c.length / 4];
+		System.arraycopy(c, 0, fourier, 0, c.length / 4);
+		double[] log = fourier.clone();
+		for (int i = 0; i < log.length; i++) {
+			log[i] = -Math.log(log[i]) * logFourierScaler;
+		}
+
+		if (approxFou == null || approxFou.length != fourier.length)
+			approxF(w, fourier.length);
+
+		// double ff = 0;
+
+		for (int i = 0; i < fourier.length - 1; i++) {
+			g.setColor(colors[2]);
+			g.drawLine(approxFou[i], (int) fourier[i] / fourierScaler + h / 2,
+					approxFou[i + 1], (int) fourier[i + 1] / fourierScaler + h
+							/ 2);
+			// ff+=fourier[i];
+			g.setColor(colors[5]);
+			g.drawLine(approxFou[i], (int) log[i] + h / 2, approxFou[i + 1],
+					(int) log[i + 1] + h / 2);
+			// ll+=log[i];
+		}
+		// ff /=fourier.length;
+		// ll /=log.length;
+		// g.setColor(Color.BLACK);
+		// int he = (int) ll + h / 2;
+		// g.drawLine(-1, he, w + 1, he);
+		// he = (int) ff / fourierScaler + h / 2;
+		// g.drawLine(-1, he, w + 1, he);
+	}
+
+	void drawMFCC(byte[] a) {
+		try {
+			mfcc = Maths.MFCC(Maths.byteToDoubleArray(a))[0];
+			Detector.process();
+		} catch (IllegalArgumentException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		int i = 0;
+		// for (double[] dd : mfcc) {
+		for (int j = 0; j < mfcc.length / 3; j++) {
+			g.setColor(colors[4]);
+			g.drawLine(i, -1, i, h + 1);
+			g.setColor(Color.red);
+			g.drawLine(i, (int) -mfcc[j] * mfccScaler + h / 2, i + 10,
+					(int) -mfcc[j + 1] * mfccScaler + h / 2);
+			i += 10;
+
+		}
+		g.setColor(Color.black);
+		g.drawLine(i, -1, i, h + 1);
+		// }
+	}
+}

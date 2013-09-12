@@ -1,0 +1,9 @@
+package magic;
+
+public class MagicClass {
+
+	public static void main(String[] args) {
+		
+	}
+
+}

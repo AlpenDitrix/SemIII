@@ -1,0 +1,128 @@
+import java.util.Random;
+
+
+
+public class MatrixMultiply {
+	public static double[][] multiply(double[][] A, double[][] B) {
+		if((A.length == 0 || A.length != A[0].length) ||
+		   (B.length == 0 || B.length != B[0].length) ||
+		   (A.length != B.length))
+			throw new IllegalArgumentException("Dimensions don't match");
+		
+		int n = A.length;
+		
+		double[][] result = new double[n][n];
+		
+		for(int i = 0; i < n; i++)
+			for(int k = 0; k < n; k++)
+				for(int j = 0; j < n; j++)
+					result[i][j] += A[i][k] * B[k][j];
+		
+		return result;
+	}
+	
+	public static void transpose(double[][] A){
+		double temp;
+		for(int i = 0; i < A.length; i++)
+			for(int j = i + 1; j < A.length; j++) {
+				temp = A[i][j];
+				A[i][j] = A[j][i];
+				A[j][i] = temp;
+			}
+	}
+	
+	private static void precompute(){
+		Random r = new Random();
+		for(int i = 0; i < N; i++)
+			for(int j = 0; j < N; j++)
+				A[i][j] = B[i][j] = r.nextInt();
+	}
+	static final int N = 200;
+	static final double[][] A = new double[N][N], B = new double[N][N], C = new double[N][N];
+
+	static long start, stop;
+	static double transposeTime;
+	
+	private static void nonTransposed(){
+		start = System.currentTimeMillis();
+		for(int i = 0; i < N; i++)
+			for(int j = 0; j < N; j++)
+				for(int k = 0; k < N; k++)
+					C[i][j] += A[i][k] * B[k][j];
+		stop = System.currentTimeMillis();
+		
+		System.out.println("Non-transposed; cycles i-j-k " + (stop - start) );
+	}
+	
+	private static void
+	
+	public static void main(String[] args) {
+		
+		
+		
+		precompute();
+		
+		
+		
+		start = System.currentTimeMillis();
+		for(int i = 0; i < N; i++)
+			for(int k = 0; k < N; k++)
+				for(int j = 0; j < N; j++)
+					C[i][j] += A[i][k] * B[k][j];
+		stop = System.currentTimeMillis();
+		
+		System.out.println("Non-transposed; cycles i-k-j " + (stop - start) );
+		
+		start = System.currentTimeMillis();
+		transpose(A);
+		stop = System.currentTimeMillis();
+		transposeTime = (stop - start) ;
+		
+		start = System.currentTimeMillis();
+		for(int i = 0; i < N; i++)
+			for(int j = 0; j < N; j++)
+				for(int k = 0; k < N; k++)
+					C[i][j] += A[k][i] * B[k][j];
+		stop = System.currentTimeMillis();
+		
+		System.out.println( "A transposed; cycles i-j-k " + (stop - start)+ 
+							" + " + transposeTime + " for transpose = " +
+							(transposeTime + (stop - start) )
+		);
+		
+		start = System.currentTimeMillis();
+		transpose(B);
+		stop = System.currentTimeMillis();
+		transposeTime = (stop - start);
+		
+		start = System.currentTimeMillis();
+		for(int i = 0; i < N; i++)
+			for(int j = 0; j < N; j++)
+				for(int k = 0; k < N; k++)
+					C[i][j] += A[i][k] * B[j][k];
+		stop = System.currentTimeMillis();
+		
+		System.out.println( "B transposed; cycles i-j-k " + (stop - start)+ 
+							" + " + transposeTime + " for transpose = " +
+							(transposeTime + (stop - start) )
+		);
+		
+		start = System.currentTimeMillis();
+		transpose(B);
+		transpose(A);
+		stop = System.currentTimeMillis();
+		transposeTime = (stop - start);
+		
+		start = System.currentTimeMillis();
+		for(int i = 0; i < N; i++)
+			for(int j = 0; j < N; j++)
+				for(int k = 0; k < N; k++)
+					C[i][j] += A[k][i] * B[j][k];
+		stop = System.currentTimeMillis();
+		
+		System.out.println( "Both transposed; cycles i-j-k " + (stop - start)+ 
+							" + " + transposeTime + " for transpose = " +
+							(transposeTime + (stop - start))
+		);
+	}
+}

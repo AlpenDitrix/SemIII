@@ -1,0 +1,25 @@
+#Sun Dec 23 20:58:10 MSK 2012
+java_doc_keyword=131,120,110
+semanticHighlighting.localVariable.bold=false
+java_default=248,225,170
+semanticHighlighting.methodDeclarationName.color=164,176,192
+tagName=164,176,192
+java_comment_task_tag=131,120,110
+java_keyword_return=231,158,60
+java_string=214,194,72
+semanticHighlighting.localVariableDeclaration.color=248,225,170
+java_doc_tag=161,147,135
+java_keyword=231,158,60
+semanticHighlighting.localVariable.enabled=true
+semanticHighlighting.methodDeclarationName.enabled=true
+java_single_line_comment=131,120,110
+semanticHighlighting.localVariableDeclaration.enabled=true
+eclipse.preferences.version=1
+semanticHighlighting.localVariableDeclaration.bold=false
+java_multi_line_comment=131,120,110
+java_bracket=248,225,170
+java_doc_link=131,120,110
+java_operator=214,194,72
+java_doc_default=131,120,110
+semanticHighlighting.localVariable.color=248,225,170
+semanticHighlighting.methodDeclarationName.bold=false

@@ -1,0 +1,42 @@
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.Stack;
+
+public class Stacker {
+
+	static void solve() throws Exception {
+		Stack<Character> chars = new Stack<Character>();
+		Stack<Integer> numbers = new Stack<Integer>();
+		BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+		String outputTail;
+
+		char[] line = br.readLine().toCharArray();
+
+		for (char c : line) {
+			chars.push(c);
+		}
+
+		// write letters
+		outputTail = "";
+		while (!chars.empty()) {
+			char c = chars.peek();
+			if (Character.isLetter(c)) {
+				outputTail = Character.toString(c).concat(outputTail);
+				chars.pop();
+			} else {
+				numbers.push(Integer.parseInt(Character.toString(chars.pop())));
+			}
+		}
+		System.out.println(outputTail);
+
+		// write numbers
+		while (!numbers.empty()) {
+			System.out.println(numbers.pop());
+		}
+
+	}
+
+	public static void main(String[] args) throws Exception {
+		solve();
+	}
+}

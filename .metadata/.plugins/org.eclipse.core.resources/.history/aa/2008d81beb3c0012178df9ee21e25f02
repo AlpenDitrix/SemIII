@@ -1,0 +1,1022 @@
+package bTree;
+
+import java.util.Arrays;
+import java.util.Random;
+import java.util.Vector;
+
+/**
+ * Этот класс описывает обычное Б-дерево и стандартные операции добаления,
+ * чтения, удаления элементов, очистка, конструктор и пара getter-ов
+ * 
+ * @author Караваева Валерия
+ * 
+ * @param <Key>
+ *            тип ключей
+ * @param <Value>
+ *            тип значений
+ */
+@SuppressWarnings({ "rawtypes", "unchecked" })
+public class BTree<Key extends Comparable<Key>, Value> {
+
+	public static boolean debug = true;
+
+	/**
+	 * Это внутренний класс, описывающий узел дерева. <br>
+	 * Каждый узел содержит 3 массива: ключи, значения и ссылки на следующие
+	 * узлы, причем массив ссылок на 1 элемент длиннее двух других (мы
+	 * сопоставляем каждому элементу по 1 ссылке на узел, в котором все элементы
+	 * меньше Этого, а для последнего в Этом узле есть еще ссылка на узел, в
+	 * котором все элементы больше него)<br>
+	 * Так же каждый узел знает, сколько в нем хранится элементов и имеет ссылку
+	 * на родительский узел.
+	 * 
+	 * Так же класс определяет несколько статических параметров:<br>
+	 * <li>ссылка на дерево, для которого сейчас идет обработка узлов <li>
+	 * некоторая магическая константа для магических операций
+	 * 
+	 * @author Караваева Валерия
+	 * 
+	 * @param <Key>
+	 *            тип ключа
+	 * @param <Value>
+	 *            тип значение
+	 */
+	private static final class Node<Key extends Comparable<Key>, Value> {
+		// TODO взять все пробегания массива key[] и заменить их на что-нибудь
+		// побыстрее.
+		// Тот же бинарный поиск например. Потому что все key[] - упорядоченные
+		// массивы
+
+		private static BTree caller;
+
+		/**
+		 * Запомним какое-то число, чтобы в процессе "ух-какого шифрования" и
+		 * "ух-какого расшифрования" мы точно пользовались одинаковой константой
+		 */
+		private static final int magicNumber = 0x45;
+
+		private Node<Key, Value> parent;
+		private Object[] keys;
+		private Object[] values;
+		private Node<Key, Value>[] links;
+		private int count;
+
+		private Node(int deg) {
+			if (deg < 2) {
+				throw new IllegalArgumentException(
+						"Tree degree must be more than or equal 2");
+			}
+			keys = new Object[caller.maxThreshold];
+			values = new Object[caller.maxThreshold];
+			links = null;
+			count = 0;
+			parent = null;
+		}
+
+		private Node(Object[] k, Object[] v, Node<Key, Value>[] l, int c,
+				Node<Key, Value> p) {
+			keys = k;
+			values = v;
+			links = l;
+			parent = p;
+			count = c;
+		}
+
+		/**
+		 * Замещает стандартный метод Object.toString();
+		 */
+		@Override
+		public String toString() {
+			StringBuilder sb = new StringBuilder();
+			sb.append('[');
+			sb.append(count);
+			sb.append("> ");
+			for (int i = 0; i < count; i++) {
+				// sb.append('(');
+				sb.append(keys[i]);
+				// sb.append(':');
+				// sb.append(values[i]);
+				// sb.append("), ");
+				sb.append(", ");
+			}
+			sb.delete(sb.length() - 2, sb.length());
+			return sb.append(']').toString();
+		}
+
+		private boolean isLeaf() {
+			return links == null;
+		}
+
+		/**
+		 * Добавляет в заанную позицию в узел. Если lazyOverfill == true, то
+		 * метод не будет проверять переполненность узла после вставки
+		 * 
+		 * @param pos
+		 *            куда вставляем
+		 * @param k
+		 * @param v
+		 *            значение
+		 * @param lazyOverfill
+		 *            ленивый или нет
+		 */
+		private void addAt(int pos, Key k, Value v, boolean lazyOverfill) {
+			/*
+			 * II.1 Толкает часть массива вправо, чтобы создать "дырку" на
+			 * нужной позиции
+			 */
+			System.arraycopy(keys, pos, keys, pos + 1, count - pos);
+			System.arraycopy(values, pos, values, pos + 1, count - pos);
+			if (links != null)
+				System.arraycopy(links, pos, links, pos + 1, count - pos + 1);
+
+			/* II.2 Вставляет элемент в дырку */
+			keys[pos] = k;
+			values[pos] = v;
+			if (!lazyOverfill) {
+				count++;
+				if (count == keys.length) {
+					split();
+				}
+			}
+		}
+
+		/**
+		 * Добавляет в конец узла
+		 * 
+		 * @param k
+		 *            ключ
+		 * @param v
+		 *            значение
+		 */
+		private void addAtEnd(Key k, Value v) {
+			addAt(count, k, v, false);
+		}
+
+		/**
+		 * Добавляет на самую первую позицию в узел
+		 * 
+		 * @param k
+		 *            ключ
+		 * @param v
+		 *            значение
+		 */
+		private void addAtZero(Key k, Value v) {
+			addAt(0, k, v, false);
+		}
+
+		/**
+		 * Добавляем центральный элемент из этого узла в его родителя.<br>
+		 * Причем, вставив, метод изменит ссылки на "этот" и соседный элемент на
+		 * заданные заранее узлы. <br>
+		 * <br>
+		 * Метод используется только внутри {@link #split()}
+		 * 
+		 * @param k
+		 * @param v
+		 *            значение
+		 * @param nodeLeft
+		 * @param nodeRight
+		 * 
+		 * @deprecated на всякий случай, чтобы не использовать случайно нигде,
+		 *             кроме {@link #split()}
+		 */
+		@Deprecated
+		private void addWithLinking(Key k, Value v, Node nodeLeft,
+				Node nodeRight) {
+			int pos = getPredictedPos(k);
+			addAt(pos, k, v, true);
+			/* II.3 Redo linking */
+			links[pos] = nodeLeft;
+			links[pos + 1] = nodeRight;
+
+			count++;
+			if (count == keys.length) {
+				split();
+			}
+		}
+
+		/**
+		 * Проверяет не меньше ли размер этого узла, чем надо. Если меньше -
+		 * пытается "перелить" элементы из соседних узлов. Если не получается -
+		 * сливает в один узел с соседом
+		 */
+		private void checkMinimalSizeAndProcess() {
+			if (parent != null) {
+				// если не корень
+				if (count < caller.minThreshold) {
+					int share = whoCanShare();
+					if (share < 0) {
+						// переливаем...
+						if (share == -1) {
+							// ...из правого
+							// SIC! whoLinksMeFromParent(this)==0;
+							// SIC! whoLinksMeFromParent(sibling)==1;
+							flowFromRight(0);
+						} else {
+							// ...из левого
+							share += magicNumber * caller.maxThreshold;
+							flowFromLeft(share - 1);
+						}
+					} else {
+						// сливаем в один...
+						if (share == 0) {
+							// ...с правым
+							// SIC! whoLinksMeFromParent(this)==0;
+							// SIC! whoLinksMeFromParent(sibling)==1;
+							merge(this, parent.links[1], 0);
+						} else {
+							// ...с левым
+							merge(parent.links[share - 1], parent.links[share],
+									share - 1);
+						}
+					}
+				}
+			}
+		}
+
+		/**
+		 * Очищает узел.
+		 */
+		private void clear() {
+			keys = new Object[keys.length];
+			values = new Object[values.length];
+			if (links != null) {
+				links = new Node[links.length];
+			}
+			count = 0;
+			parent = null;
+		}
+
+		/**
+		 * @param k
+		 *            ключ
+		 * @return соответствующий ключу {@code k} элемент или null, если такого
+		 *         не обнаружилось
+		 */
+		private Value get(Key k) {
+			int pos = getStrictPos(k);
+			return pos == -1 ? null : (Value) values[pos];
+		}
+
+		/**
+		 * 
+		 * @param k
+		 * @param get
+		 * @return
+		 */
+		private Integer getLinkPosFrom(Key k, boolean get) {
+			if (!get) {
+				// ищем для вставки
+				if (isLeaf()) {
+					// нету ссылок дальше. Пихаем сюда
+					return null;
+				} else {
+					// есть куда ехать дальше
+					return getPredictedPos(k);
+				}
+			} else {
+				// ищем для чтения
+				Integer pos = getPredictedPos(k);
+				if (pos == count || !eq(k, (Key) keys[pos])) {
+					// не нашли
+					if (isLeaf()) {
+						// нету ссылок. Не нашли
+						return null;
+					} else {
+						// Не нашли, но можно ехать дальше
+						return pos;
+					}
+				} else {
+					// нашли что-то
+					// k == keys[pos];
+					return -1;
+				}
+			}
+		}
+
+		private Node<Key, Value>[] getLinks() {
+			return links;
+		}
+
+		/**
+		 * Возвращает узел по ссылке по заданному индексу
+		 * 
+		 * @param i
+		 * @return Node из массива link по искомому индексу
+		 */
+		private Node<Key, Value> getNextFrom(int idx) {
+			if (idx < 0 || idx > count) {
+				return null;
+			} else {
+				return links[idx];
+			}
+		}
+
+		/**
+		 * Возвращает "мягко" номер ключа куда может быть вставлен {@code k}
+		 * 
+		 * @param k
+		 *            искомый ключ
+		 * @return см. описание
+		 */
+		private int getPredictedPos(Key k) {
+			int i = 0;
+			for (; i < count; i++) {
+				if (AlessOrEqThanB(k, (Key) keys[i])) {
+					return i;
+				}
+			}
+			return i;
+		}
+
+		/**
+		 * Выдает "жестко" позицию элемента с ключом {@code k}, либо
+		 * {@code (-1)}, если такого нет
+		 * 
+		 * @param k
+		 * @return
+		 */
+		private int getStrictPos(Key k) {
+			for (int i = 0; i < count; i++) {
+				if (eq(k, (Key) keys[i])) {
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		private void remove(int i) {
+			if (i == -1) {
+				// такой ключ не найден в дереве
+				return;
+			}
+
+			if (isLeaf()) {
+				removeFromLeaf(i);
+				checkMinimalSizeAndProcess();
+				checkForEmptyRoot();
+			} else {
+				removeFromNode(i);
+			}
+
+		}
+
+		private void checkForEmptyRoot() {
+			if (caller.root.count == 0) {
+				try {
+					// корень пустой
+					caller.root = caller.root.links[0];
+					caller.root.parent = null;
+					caller.height--;
+				} catch (NullPointerException e) {
+					// корень пустой. Вообще всё дерево пустое
+					System.out.println("Tree is empty");
+					caller.clear();
+					// ну идеально пустое
+				}
+			}
+		}
+
+		private void removeFirst() {
+			remove(0);
+		}
+
+		/**
+		 * Убирает элемент и всё, на что он ссылается (в листе он не ссылается
+		 * ни на что)
+		 * 
+		 * @param i
+		 */
+		private void removeFromLeaf(int i) {
+			// Просто сдвигаем ту часть массива, что справа от удаляемого
+			// элемента, на одну позицию влево и накладываем её поверх
+			// остальных.
+			// Пример: было 1234567890. Хотим удалить 5
+			// Берем 67890 и кладем на 1 позицию влево. Получаем 1234678900.
+			// А потом уменьшаем <count> на 1, так что нам видно только то, что
+			// нужно: 123467890
+			System.arraycopy(keys, i + 1, keys, i, count - i - 1);
+			System.arraycopy(values, i + 1, values, i, count - i - 1);
+			if (links != null) {
+				// когда метод вызывается для слияния 2 узлов, когда мы
+				// убираем из родителя разделитель, мы должны убрать и его
+				// ссылку
+				System.arraycopy(links, i + 1, links, i, count - i);
+			}
+			count--;
+		}
+
+		/**
+		 * Удаляет элемент из узла, сохраняя ссылки на следующие узлы
+		 * 
+		 * @param i
+		 */
+		private void removeFromNode(int i) {
+			// pop up and remove last
+			Node node = links[i];
+			while (!node.isLeaf()) {
+				node = node.links[node.count];
+			}
+
+			keys[i] = node.keys[node.count - 1];
+			values[i] = node.values[node.count - 1];
+			node.removeLast();
+		}
+
+		/**
+		 * Удаляет последний элемент в узле
+		 */
+		private void removeLast() {
+			remove(count - 1);
+		}
+
+		/**
+		 * Объединяет 2 соседных узла, когда размер одного - минимальный, а
+		 * второго - меньше минимального.
+		 * 
+		 * @param i
+		 */
+		private static void merge(Node left, Node right, int delimeterIndex) {
+			if (debug) {
+				System.out.println("merge");
+			}
+			/* I. Создаем новые массивы */
+			Object[] newKeys = new Object[caller.maxThreshold];
+			Object[] newValues = new Object[caller.maxThreshold];
+			Node[] newLinks = null;
+
+			/*
+			 * II. Заполняем их: сначала элементы из левого, потом 1
+			 * "разделяющий" элемент (тот, что разделяет ссылки на правый и
+			 * левый объединяемый узел)из родителя, потом элементы из правого
+			 */
+			System.arraycopy(left.keys, 0, newKeys, 0, left.count);
+			newKeys[left.count] = left.parent.keys[delimeterIndex];
+			System.arraycopy(right.keys, 0, newKeys, left.count + 1,
+					right.count);
+
+			System.arraycopy(left.values, 0, newValues, 0, left.count);
+			newValues[left.count] = left.parent.values[delimeterIndex];
+			System.arraycopy(right.values, 0, newValues, left.count + 1,
+					right.count);
+
+			/* III. Для нелистового узла нужно скопировать и ссылки */
+			if (!left.isLeaf()) {
+				newLinks = new Node[caller.maxThreshold + 1];
+				System.arraycopy(left.links, 0, newLinks, 0, left.count + 1);
+				System.arraycopy(right.links, 0, newLinks, left.count + 1,
+						right.count + 1);
+			}
+
+			/*
+			 * IV. Все дети объединяемых узлов должны узнать, что теперь они
+			 * принадлежат новому родителю
+			 */
+			Node newNode = new Node(newKeys, newValues, newLinks, left.count
+					+ 1 + right.count, left.parent);
+			if (!newNode.isLeaf()) {
+				for (int i = 0; i < newNode.count + 1; i++) {
+					newNode.links[i].parent = newNode;
+				}
+			}
+
+			/* V. Меняем ссылку на правый узел ссылкой на новый */
+			left.parent.links[delimeterIndex + 1] = newNode;
+
+			/*
+			 * VI. Убираем "разделитель" из родителя вместе со ссылкой на левый
+			 * узел
+			 */
+			left.parent.removeFromLeaf(delimeterIndex);
+			left.parent.checkMinimalSizeAndProcess();
+			left.parent.checkForEmptyRoot();
+		}
+
+		/**
+		 * Переливает элемент из левого брата в этот узел
+		 * 
+		 * @param indexLeft
+		 */
+		private void flowFromLeft(int indexLeft) {
+			if (debug) {
+				System.out.println("flowFromLeft");
+			}
+			if (parent.links[indexLeft + 1] != this) {
+				throw new RuntimeException("Selected nodes are not neighbors");
+			}
+			Node<Key, Value> leftNode = parent.links[indexLeft];
+			/*
+			 * добавляем элемент из родителя, для достижения необходимого
+			 * размера
+			 */
+			addAtZero((Key) parent.keys[indexLeft],
+					(Value) parent.values[indexLeft]);
+
+			/* перекидываем ссылку для нового элемента */
+			if (!isLeaf()) {
+				links[0] = leftNode.links[leftNode.count];
+				links[0].parent = this;
+			}
+
+			/* поднимаем элемент из соседа вверх в родителя */
+			parent.set(indexLeft, (Key) leftNode.keys[leftNode.count - 1],
+					(Value) leftNode.values[leftNode.count - 1]);
+
+			/* убираем передаваемый элемент вместе с его ссылкой */
+			int i = leftNode.count - 1;
+			if (!isLeaf()) {
+				System.arraycopy(leftNode.links, i + 2, leftNode.links, i + 1,
+						1);
+			}
+			leftNode.count--;
+		}
+
+		/**
+		 * Переливает элемент из правого брата в этот узел
+		 * 
+		 * @param indexLeft
+		 */
+		private void flowFromRight(int indexLeft) {
+			if (debug) {
+				System.out.println("flowFromRight");
+			}
+			if (parent.links[indexLeft] != this) {
+				throw new RuntimeException("Selected nodes are not neighbors");
+			}
+			Node<Key, Value> rightNode = parent.links[indexLeft + 1];
+			/*
+			 * добавляем элемент из родителя, для достижения необходимого
+			 * размера
+			 */
+			addAtEnd((Key) parent.keys[indexLeft],
+					(Value) parent.values[indexLeft]);
+
+			/* перекидываем ссылку для нового элемента */
+			if (!isLeaf()) {
+				links[count] = rightNode.links[0];
+				links[count].parent = this;
+			}
+
+			/* поднимаем элемент из соседа вверх в родителя */
+			parent.set(indexLeft, (Key) rightNode.keys[0],
+					(Value) rightNode.values[0]);
+
+			/* убираем передаваемый элемент вместе с его ссылкой */
+			rightNode.removeFromLeaf(0);
+		}
+
+		private void set(int i, Key k, Value v) {
+			keys[i] = k;
+			values[i] = v;
+		}
+
+		/**
+		 * Разбивает два полных на 2 минимально заполненных узла
+		 */
+		@SuppressWarnings("deprecation")
+		private void split() {
+
+			/* 0. Полезные константы */
+			final int l = keys.length;
+			final int h = keys.length / 2;
+
+			/* I. Подготовим новые массивы */
+			Object[] keysLeft = new Object[l];
+			Object[] keysRight = new Object[l];
+			Object[] valuesLeft = new Object[l];
+			Object[] valuesRight = new Object[l];
+			Node[] linksLeft = isLeaf() ? null : new Node[l + 1];
+			Node[] linksRight = isLeaf() ? null : new Node[l + 1];
+
+			/*
+			 * II. Заполним эти массивы, соответственно, 2мя половинками старого
+			 * узла (делим относительно центрального эелемента)
+			 */
+			System.arraycopy(keys, 0, keysLeft, 0, h);
+			System.arraycopy(keys, h + 1, keysRight, 0, h);
+			System.arraycopy(values, 0, valuesLeft, 0, h);
+			System.arraycopy(values, h + 1, valuesRight, 0, h);
+			if (!isLeaf()) {
+				System.arraycopy(links, 0, linksLeft, 0, h + 1);
+				System.arraycopy(links, h + 1, linksRight, 0, h + 1);
+				// if it is leaf it must remain "link" arrays equal to null
+			}
+
+			/*
+			 * III. Определяем родителя. Если это мы делим не корень дерева -
+			 * родитель останется тем же. Иначе мы создадим новый корень, в
+			 * котором оставим единственный элемент - тот, что центральный в
+			 * узле, который сейчас делим
+			 */
+			Node parentt = parent == null ? this : parent;
+
+			/* IV. Создадим, наконец новые узлы */
+			Node nodeLeft = new Node(keysLeft, valuesLeft, linksLeft,
+					caller.minThreshold, parentt);
+			Node nodeRight = new Node(keysRight, valuesRight, linksRight,
+					caller.minThreshold, parentt);
+
+			/* V. Если мы делили не лист, то нужно скопировать и ссылки */
+			if (!nodeLeft.isLeaf()) {
+				for (Node node : nodeLeft.links) {
+					if (node != null) {
+						node.parent = nodeLeft;
+					}
+				}
+			}
+			if (!nodeRight.isLeaf()) {
+				for (Node node : nodeRight.links) {
+					if (node != null) {
+						node.parent = nodeRight;
+					}
+				}
+			}
+
+			/*
+			 * VI. Пихаем вверх цинтральный элемент, либо создаем новый корень с
+			 * ним же
+			 */
+			if (parent == null) {
+				/*
+				 * Создавать новые "чистые" массивы, в принципе, излишне, потому
+				 * что мы и так никогда не смотрим в элементы, идекс которых
+				 * больше, чем <count>, но тестики на производительность не
+				 * показывали ухудшений в производительности
+				 * 
+				 * Но дебажить проще, когда нету мусора
+				 */
+				// Object kk = keys[h];
+				// Object vv = values[h];
+				// keys = new Object[caller.maxThreshold];
+				// values = new Object[caller.maxThreshold];
+				// keys[0] = kk;
+				// values[0] = vv;
+				/**/
+
+				keys[0] = keys[h];
+				values[0] = values[h];
+				count = 1;
+				links = new Node[caller.maxThreshold + 1];
+				links[0] = nodeLeft;
+				links[1] = nodeRight;
+
+				caller.height++;
+			} else {
+				parent.addWithLinking((Key) keys[h], (Value) values[h],
+						nodeLeft, nodeRight);
+			}
+		}
+
+		/**
+		 * Возвращает разные чисела, в зависимости от разных возможностей этого
+		 * узла для переливания или слияния:<br>
+		 * <li>слияние с правым возможно => 0<br> <li>переливание из правого
+		 * возможно => -1<br> <li>слияние с левым возможно => его индекс<br> <li>
+		 * переливание из левого возможно => его идекс - 2*maxThreshold (точно
+		 * меньше нуля) <br>
+		 * 
+		 * @return
+		 */
+		private int whoCanShare() {
+			if (caller.root == this) {
+				throw new RuntimeException("Unable to share root node");
+			}
+			int l = whoLinksMeFromParent();
+			if (l == 0) {
+				// проверяем ПРАВЫЙ
+				if (parent.links[1].count == caller.minThreshold) {
+					// объеденить!
+					return 0;
+				} else {
+					return -1;
+				}
+			} else {
+				// ЛЕВЫЙ брат (тот, что parent.links[текущийИндесВРодителе-1])
+				// существует
+				if (parent.links[l - 1].count == caller.minThreshold) {
+					return l;
+				} else {
+					// что-то точно меньшее нуля
+					return l - magicNumber * caller.maxThreshold;
+				}
+			}
+		}
+
+		/**
+		 * Возвращает индекс ссылки на текущий узел из его родителя
+		 * 
+		 * @return
+		 */
+		private int whoLinksMeFromParent() {
+			for (int i = 0; i < parent.count + 1; i++) {
+				if (parent.links[i] == this) {
+					return i;
+				}
+			}
+			throw new RuntimeException("Not found link from parent to \n"
+					+ parent + "\n" + this);
+		}
+
+		/**
+		 * Сравнивает ключи
+		 * 
+		 * @param A
+		 * @param B
+		 * @return
+		 */
+		private boolean AlessOrEqThanB(Key A, Key B) {
+			return A.compareTo(B) <= 0;
+		}
+
+		/*
+		 * дальше идет всякая муть (если говорить как модные программисты -
+		 * синтаксический сахар) связанная с интерфейсом Comparable
+		 */
+		@SuppressWarnings("unused")
+		/**
+		 * Сравнивает ключи
+		 * @param A
+		 * @param B
+		 * @return
+		 */
+		private boolean AlessThanB(Key A, Key B) {
+			return A.compareTo(B) < 0;
+		}
+
+		/**
+		 * Сравнивает ключи
+		 * 
+		 * @param A
+		 * @param B
+		 * @return
+		 */
+		private boolean eq(Key A, Key B) {
+			if (A != null && B != null)
+				return A.compareTo(B) == 0;
+			else {
+				return false;
+			}
+		}
+	}
+
+	static BTree<Integer, Integer> tree;
+
+	/**
+	 * ТЕСТ
+	 * 
+	 * @param a
+	 */
+	public static void main(String[] a) {
+		int length = 30;
+
+		Integer[] keys = new Integer[length];
+		Integer[] vals = new Integer[length];
+		Random r = new Random();
+		for (int i = 0; i < keys.length; i++) {
+			 int n = r.nextInt(length+1);
+			 while (arrContains(keys, n)) {
+			 n = r.nextInt(length+1);
+			 }
+			 keys[i] = n;
+			vals[i] = i;
+
+			// keys[i] = i;
+			// vals[i] = 2 * i;
+		}
+		System.out.println(Arrays.toString(keys));
+
+		System.err.println("Start");
+		long start = System.currentTimeMillis();
+		tree = new BTree<Integer, Integer>(3);
+		@SuppressWarnings("unused")
+		Thread c = (new Thread(new Runnable() {
+			long timer;
+			double iops = -1;
+			long was;
+
+			@Override
+			public void run() {
+				timer = System.currentTimeMillis();
+				while (true) {
+					if (System.currentTimeMillis() - timer > 1000) {
+						timer = System.currentTimeMillis();
+						if (iops == -1) {
+							was = tree.count;
+							iops = tree.count;
+						} else {
+							iops = (iops + tree.count - was) / 2;
+							was = tree.count;
+						}
+						System.out.println(iops);
+					}
+				}
+			}
+		}));
+		for (int i = 0; i < keys.length; i++) {
+			tree.put(keys[i], vals[i]);
+		}
+
+		System.out.println(tree.count);
+		System.err.println(System.currentTimeMillis() - start + " " + 10000000
+				* 1000 / (System.currentTimeMillis() - start));
+
+		System.err.println("\nNow removing...");
+		for (int i = 0; i < keys.length; i++) {
+//			System.out.println(keys[i] + " " + vals[i]);
+			tree.delete(keys[i]);
+			for (int j = i + 1; j < keys.length; j++) {
+				if (tree.get(keys[j]) != vals[j]) {
+					System.out.println("Not found " + keys[j] + " " + vals[j]);
+				}
+			}
+		}
+		System.out.println(tree);
+	}
+
+	private static boolean arrContains(Integer[] arr, Integer n) {
+		for (Integer i : arr) {
+			if (i == n) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Ссылка на корневой узел
+	 */
+	private Node<Key, Value> root;
+
+	private int minThreshold;
+	private int maxThreshold;
+
+	/**
+	 * "Популяция" элементов. Меняется при добавлении или удалении элементов
+	 */
+	private long count = 0;
+
+	/**
+	 * Высота дерева. Меняется при разбиении корня(+) или когда корень пуст и он
+	 * меняется на свою единственную ссылку(-). Она точно будет единственная. Я
+	 * гаратирую это.
+	 */
+	private int height;
+
+	/**
+	 * Новое Б-дерево заданной степени
+	 * 
+	 * @param deg
+	 *            степень
+	 */
+	public BTree(int deg) {
+		if (deg < 2) {
+			throw new IllegalArgumentException(
+					"Tree degree must be more than or equal 2");
+		}
+		maxThreshold = 2 * deg - 1;
+		minThreshold = deg - 1;
+		Node.caller = this;
+		root = new Node<Key, Value>(deg);
+		Node.caller = null;
+		height = 1;
+	}
+
+	/**
+	 * Стирает информацию о дереве.
+	 * <p>
+	 * Фактически, просто очещает корень, а "сборщик мусора" из Java Virtual
+	 * Machine сам освободит память
+	 */
+	public void clear() {
+		root.clear();
+	}
+
+	/**
+	 * Удаляет элемент по ключу из дерева
+	 * 
+	 * @param k
+	 */
+	public void delete(Key k) {
+		while (Node.caller != null) {
+		}
+		Node.caller = this;
+		Node<Key, Value> node = root;
+		int pos = node.getPredictedPos(k);
+		while (true) {
+			if (pos < node.count && node.eq((Key) node.keys[pos], k)) {
+				// if found => remove
+				node.remove(pos);
+				count--;
+				break;
+			} else {
+				// not found => go forward
+				node = node.links[pos];
+				pos = node.getPredictedPos(k);
+			}
+		}
+		Node.caller = null;
+	}
+
+	/**
+	 * Возвращает значение элемента дерева по ключу
+	 * 
+	 * @param k
+	 *            ключ
+	 * @return первый попавшийся Value с искомым ключом или null, если такого не
+	 *         обнаружилось
+	 */
+	public Value get(Key k) {
+		Node<Key, Value> node = root;
+		Integer pos = node.getLinkPosFrom(k, true);
+		while (pos != null) {
+			if (pos != -1) {
+				node = node.getNextFrom(pos);
+				pos = node.getLinkPosFrom(k, true);
+			} else {
+				return node.get(k);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * @return высота дерева
+	 */
+	public int getHeight() {
+		return height;
+	}
+
+	/**
+	 * @return общее число элементов в дереве (добавленные минус удаленные)
+	 */
+	public long getVolume() {
+		return count;
+	}
+
+	/**
+	 * Добавляет новую запись в дерево
+	 * 
+	 * @param k
+	 * @param v
+	 *            значение
+	 */
+	public void put(Key k, Value v) {
+		while (Node.caller != null) {
+		}
+		Node.caller = this;
+		Node<Key, Value> node = predictLeafWhereToPut(k);
+		node.addAt(node.getPredictedPos(k), k, v, false);
+		count++;
+		Node.caller = null;
+	}
+
+	/**
+	 * Замещает стандартный метод Object.toString();
+	 */
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append(height + "\n");
+		Vector<Node<Key, Value>> thisLevelLinks = new Vector<Node<Key, Value>>();
+		thisLevelLinks.add(root);
+		while (thisLevelLinks.size() > 0) {
+			Vector<Node<Key, Value>> th = new Vector<Node<Key, Value>>();
+			sb.append("[[" + thisLevelLinks.size() + ">>  ");
+			for (Node<Key, Value> n : thisLevelLinks) {
+				sb.append(n);
+				sb.append(' ');
+				try {
+					Node links[] = n.getLinks();
+					for (int i = 0; i < n.count + 1; i++) {
+						th.add(links[i]);
+					}
+				} catch (NullPointerException e) {
+				}
+			}
+			sb.append('\n');
+			thisLevelLinks = th;
+		}
+
+		return sb.toString();
+	}
+
+	/**
+	 * Ищет узел, в который можно было бы вставит заданный ключ
+	 * 
+	 * @param k
+	 * @return найденный узел
+	 */
+	private Node<Key, Value> predictLeafWhereToPut(Key k) {
+		Node<Key, Value> node = root;
+		Integer pos = node.getLinkPosFrom(k, false);
+
+		if (pos != null/* то есть, если root - не лист(см. #node.getLinkFrom()# */) {
+			do {
+				node = node.getNextFrom(pos);
+				pos = node.getLinkPosFrom(k, false);
+			} while (pos != null);
+		}
+
+		return node;
+	}
+}
