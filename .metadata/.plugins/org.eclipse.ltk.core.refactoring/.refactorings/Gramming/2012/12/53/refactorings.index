@@ -1,5 +1,0 @@
-1356385755607	Rename type 'CheckerState'
-1356423148156	Rename type 'TraansposeChecker'
-1356423163325	Rename enum constant 'qt_terminate'
-1356423672964	Extract method 'precompute'
-1356423687123	Rename method 'precompute'
